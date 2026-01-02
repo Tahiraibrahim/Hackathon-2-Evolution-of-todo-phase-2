@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { LogIn, Sparkles } from "lucide-react";
 import { motion } from "framer-motion";
+import { useAuth } from "@/context/AuthContext";
+import { useToast } from "@/context/NotificationContext";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -12,6 +14,8 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const router = useRouter();
+  const { login } = useAuth();
+  const toast = useToast();
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -20,8 +24,6 @@ export default function LoginPage() {
 
     try {
       // Call backend authentication endpoint
-      // For now, this is a mock implementation
-      // In production, this would call Better Auth or your custom auth endpoint
       const response = await fetch("http://localhost:8000/api/auth/login", {
         method: "POST",
         headers: {
@@ -36,14 +38,20 @@ export default function LoginPage() {
 
       const data = await response.json();
 
-      // Store JWT token and user info in localStorage
-      localStorage.setItem("authToken", data.token);
-      localStorage.setItem("userName", data.full_name || data.name || "User");
+      // Use the AuthContext login function
+      login(data.token, {
+        username: data.full_name || data.name || data.username,
+        email: data.email,
+      });
+
+      toast.success("Welcome back!", "You have successfully logged in.");
 
       // Redirect to dashboard
       router.push("/dashboard");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Login failed. Please try again.");
+      const errorMessage = err instanceof Error ? err.message : "Login failed. Please try again.";
+      setError(errorMessage);
+      toast.error("Login failed", errorMessage);
     } finally {
       setLoading(false);
     }
@@ -165,7 +173,7 @@ export default function LoginPage() {
 
           <div className="mt-6 text-center">
             <p className="text-sm" style={{ color: 'var(--foreground-muted)' }}>
-              Don't have an account?{" "}
+              Don&apos;t have an account?{" "}
               <Link
                 href="/signup"
                 className="font-semibold text-blue-400 hover:text-blue-300 transition-colors"

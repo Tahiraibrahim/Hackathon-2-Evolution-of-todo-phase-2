@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { motion } from "framer-motion";
 import {
   LayoutDashboard,
@@ -11,6 +11,7 @@ import {
   LogOut,
   Sparkles,
 } from "lucide-react";
+import { useAuth, useDisplayName } from "@/context/AuthContext";
 
 const navLinks = [
   {
@@ -37,13 +38,8 @@ const navLinks = [
 
 export default function Sidebar() {
   const pathname = usePathname();
-  const router = useRouter();
-
-  const handleLogout = () => {
-    localStorage.removeItem("authToken");
-    localStorage.removeItem("userName");
-    router.push("/login");
-  };
+  const { logout } = useAuth();
+  const displayName = useDisplayName();
 
   return (
     <motion.aside
@@ -68,6 +64,21 @@ export default function Sidebar() {
             <h1 className="text-xl font-bold text-white">TaskFlow</h1>
             <p className="text-xs" style={{ color: 'var(--foreground-muted)' }}>Premium Edition</p>
           </div>
+        </motion.div>
+
+        {/* User Welcome */}
+        <motion.div
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.25, duration: 0.4 }}
+          className="mb-6 px-4 py-3 rounded-xl"
+          style={{
+            background: 'var(--glass-bg)',
+            border: '1px solid var(--glass-border)',
+          }}
+        >
+          <p className="text-xs" style={{ color: 'var(--input-placeholder)' }}>Welcome back,</p>
+          <p className="text-sm font-semibold text-white truncate">{displayName}</p>
         </motion.div>
 
         {/* Navigation Links */}
@@ -114,7 +125,7 @@ export default function Sidebar() {
           initial={{ y: 50, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
           transition={{ delay: 0.4, duration: 0.5 }}
-          onClick={handleLogout}
+          onClick={logout}
           whileHover={{ scale: 1.02 }}
           whileTap={{ scale: 0.98 }}
           className="flex items-center gap-3 px-4 py-3 rounded-xl text-red-400 hover:bg-red-500/10 transition-all duration-300 border border-red-500/30 hover:border-red-500/50"

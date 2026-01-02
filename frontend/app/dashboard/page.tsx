@@ -18,6 +18,8 @@ import { cn } from "@/lib/utils";
 import { taskApi, Task, Priority } from "@/lib/api";
 import TaskCard from "@/components/TaskCard";
 import Navbar from "@/components/Navbar";
+import { useAuth, useDisplayName } from "@/context/AuthContext";
+import { useToast } from "@/context/NotificationContext";
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -52,34 +54,45 @@ export default function DashboardPage() {
   const [showFilterDropdown, setShowFilterDropdown] = useState(false);
   const router = useRouter();
 
+  const { isAuthenticated, isLoading: authLoading } = useAuth();
+  const displayName = useDisplayName();
+  const toast = useToast();
+
   // Check authentication on mount
   useEffect(() => {
-    const token = localStorage.getItem("authToken");
-    if (!token) {
-      router.push("/login");
-      return;
+    if (!authLoading && !isAuthenticated) {
+      const token = localStorage.getItem("authToken");
+      if (!token) {
+        router.push("/login");
+        return;
+      }
     }
-    fetchTasks();
-  }, [router]);
+    if (!authLoading) {
+      fetchTasks();
+    }
+  }, [authLoading, isAuthenticated, router]);
 
-  // Filter tasks based on search and priority
+  // Filter tasks based on search and priority - AGGRESSIVE CLIENT-SIDE FILTERING
   useEffect(() => {
-    let filtered = tasks;
+    const query = searchQuery.toLowerCase().trim();
+    const priorityMatch = priorityFilter === "All" ? null : priorityFilter;
 
-    // Apply search filter
-    if (searchQuery.trim()) {
-      filtered = filtered.filter(
-        (task) =>
-          task.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          task.description?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          task.category?.toLowerCase().includes(searchQuery.toLowerCase())
-      );
-    }
+    const filtered = tasks.filter((task) => {
+      // Case-insensitive search across title, description, and category
+      const matchesSearch =
+        query === "" ||
+        task.title.toLowerCase().includes(query) ||
+        (task.description && task.description.toLowerCase().includes(query)) ||
+        (task.category && task.category.toLowerCase().includes(query));
 
-    // Apply priority filter
-    if (priorityFilter !== "All") {
-      filtered = filtered.filter((task) => task.priority === priorityFilter);
-    }
+      // Priority filter
+      const matchesPriority = priorityMatch === null || task.priority === priorityMatch;
+
+      return matchesSearch && matchesPriority;
+    });
+
+    // Debug helper - check browser console
+    console.log("Searching for:", searchQuery, "Found:", filtered.length, "tasks out of", tasks.length);
 
     setFilteredTasks(filtered);
   }, [tasks, searchQuery, priorityFilter]);
@@ -92,6 +105,7 @@ export default function DashboardPage() {
       setError("");
     } catch (err) {
       setError("Failed to load tasks. Please try again.");
+      toast.error("Failed to load tasks", "Please check your connection and try again.");
       console.error(err);
     } finally {
       setLoading(false);
@@ -122,8 +136,12 @@ export default function DashboardPage() {
       setCategory("");
       setDueDate("");
       setError("");
+
+      // Show success notification
+      toast.success("Task created", `"${newTask.title}" has been added to your tasks.`);
     } catch (err) {
       setError("Failed to create task. Please try again.");
+      toast.error("Failed to create task", "Please try again later.");
       console.error(err);
     } finally {
       setSubmitting(false);
@@ -136,19 +154,32 @@ export default function DashboardPage() {
         is_completed: !task.is_completed,
       });
       setTasks(tasks.map((t) => (t.id === task.id ? updatedTask : t)));
+
+      // Show notification
+      if (updatedTask.is_completed) {
+        toast.success("Task completed", `"${task.title}" marked as complete.`);
+      } else {
+        toast.info("Task reopened", `"${task.title}" marked as incomplete.`);
+      }
     } catch (err) {
       setError("Failed to update task. Please try again.");
+      toast.error("Update failed", "Could not update the task status.");
       console.error(err);
     }
   };
 
   const handleDeleteTask = async (taskId: number) => {
+    const taskToDelete = tasks.find((t) => t.id === taskId);
     try {
       await taskApi.deleteTask(taskId);
       setTasks(tasks.filter((t) => t.id !== taskId));
       setError("");
+
+      // Show success notification
+      toast.success("Task deleted", taskToDelete ? `"${taskToDelete.title}" has been removed.` : "Task has been removed.");
     } catch (err) {
       setError("Failed to delete task. Please try again.");
+      toast.error("Delete failed", "Could not delete the task.");
       console.error(err);
     }
   };
@@ -161,6 +192,7 @@ export default function DashboardPage() {
   const handleSaveEdit = async (taskId: number) => {
     if (!editedTitle.trim()) {
       setError("Task title cannot be empty.");
+      toast.warning("Invalid title", "Task title cannot be empty.");
       return;
     }
 
@@ -172,8 +204,12 @@ export default function DashboardPage() {
       setEditingTaskId(null);
       setEditedTitle("");
       setError("");
+
+      // Show success notification
+      toast.success("Task updated", `Task renamed to "${updatedTask.title}".`);
     } catch (err) {
       setError("Failed to update task. Please try again.");
+      toast.error("Update failed", "Could not save the changes.");
       console.error(err);
     }
   };
@@ -207,7 +243,7 @@ export default function DashboardPage() {
               Dashboard
             </h1>
             <p className="mt-2" style={{ color: 'var(--foreground-muted)' }}>
-              Welcome back! Here's your task overview.
+              Welcome back, <span className="text-white font-medium">{displayName}</span>! Here&apos;s your task overview.
             </p>
           </div>
         </motion.div>
@@ -538,10 +574,26 @@ export default function DashboardPage() {
                 <ListTodo className="w-8 h-8" style={{ color: 'var(--input-placeholder)' }} />
               </div>
               <p style={{ color: 'var(--foreground-muted)' }}>
-                {searchQuery || priorityFilter !== "All"
-                  ? "No tasks match your filters."
-                  : "No tasks yet. Create your first task above!"}
+                {searchQuery.trim()
+                  ? <>No tasks found matching &apos;<span className="text-blue-400 font-medium">{searchQuery}</span>&apos;</>
+                  : priorityFilter !== "All"
+                    ? `No ${priorityFilter.toLowerCase()} priority tasks found.`
+                    : "No tasks yet. Create your first task above!"}
               </p>
+              {(searchQuery.trim() || priorityFilter !== "All") && (
+                <motion.button
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.2 }}
+                  onClick={() => {
+                    setSearchQuery("");
+                    setPriorityFilter("All");
+                  }}
+                  className="mt-4 text-sm text-blue-400 hover:text-blue-300 transition-colors"
+                >
+                  Clear filters
+                </motion.button>
+              )}
             </motion.div>
           ) : (
             <motion.div

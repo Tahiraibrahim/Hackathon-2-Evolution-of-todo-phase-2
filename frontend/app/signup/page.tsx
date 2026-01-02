@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { UserPlus, Sparkles } from "lucide-react";
 import { motion } from "framer-motion";
+import { useAuth } from "@/context/AuthContext";
+import { useToast } from "@/context/NotificationContext";
 
 export default function SignupPage() {
   const [fullName, setFullName] = useState("");
@@ -14,6 +16,8 @@ export default function SignupPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const router = useRouter();
+  const { login } = useAuth();
+  const toast = useToast();
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -22,12 +26,14 @@ export default function SignupPage() {
     // Validate passwords match
     if (password !== confirmPassword) {
       setError("Passwords do not match");
+      toast.warning("Password mismatch", "Please make sure both passwords match.");
       return;
     }
 
     // Validate password length
     if (password.length < 8) {
       setError("Password must be at least 8 characters long");
+      toast.warning("Password too short", "Password must be at least 8 characters.");
       return;
     }
 
@@ -35,8 +41,6 @@ export default function SignupPage() {
 
     try {
       // Call backend authentication endpoint
-      // For now, this is a mock implementation
-      // In production, this would call Better Auth or your custom auth endpoint
       const response = await fetch("http://localhost:8000/api/auth/signup", {
         method: "POST",
         headers: {
@@ -56,13 +60,20 @@ export default function SignupPage() {
 
       const data = await response.json();
 
-      // Store JWT token in localStorage
-      localStorage.setItem("authToken", data.token);
+      // Use the AuthContext login function
+      login(data.token, {
+        username: fullName,
+        email: email,
+      });
+
+      toast.success("Account created!", `Welcome to TaskFlow, ${fullName}!`);
 
       // Redirect to dashboard
       router.push("/dashboard");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Signup failed. Please try again.");
+      const errorMessage = err instanceof Error ? err.message : "Signup failed. Please try again.";
+      setError(errorMessage);
+      toast.error("Signup failed", errorMessage);
     } finally {
       setLoading(false);
     }

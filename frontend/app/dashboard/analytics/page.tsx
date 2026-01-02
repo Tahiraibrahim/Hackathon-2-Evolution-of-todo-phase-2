@@ -1,9 +1,127 @@
 "use client";
 
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import { BarChart3, TrendingUp, Clock } from "lucide-react";
+import {
+  BarChart3,
+  CheckCircle2,
+  ListTodo,
+  TrendingUp,
+  AlertTriangle,
+  Clock,
+  Target,
+  Zap,
+} from "lucide-react";
+import { taskApi, Task, Priority } from "@/lib/api";
+import { useAuth } from "@/context/AuthContext";
+
+const containerVariants = {
+  hidden: { opacity: 0 },
+  show: {
+    opacity: 1,
+    transition: {
+      staggerChildren: 0.1,
+    },
+  },
+};
+
+const itemVariants = {
+  hidden: { opacity: 0, y: 20 },
+  show: { opacity: 1, y: 0 },
+};
+
+// Productivity message based on completion rate
+function getProductivityMessage(completionRate: number, totalTasks: number): { message: string; icon: React.ReactNode } {
+  if (totalTasks === 0) {
+    return {
+      message: "Start adding tasks to track your productivity!",
+      icon: <Target className="w-6 h-6 text-blue-400" />,
+    };
+  }
+  if (completionRate >= 80) {
+    return {
+      message: "Outstanding! You're crushing it!",
+      icon: <Zap className="w-6 h-6 text-yellow-400" />,
+    };
+  }
+  if (completionRate >= 50) {
+    return {
+      message: "Keep it up! You're making great progress!",
+      icon: <TrendingUp className="w-6 h-6 text-emerald-400" />,
+    };
+  }
+  if (completionRate >= 25) {
+    return {
+      message: "Good start! Keep pushing forward!",
+      icon: <Clock className="w-6 h-6 text-amber-400" />,
+    };
+  }
+  return {
+    message: "Time to get productive! You've got this!",
+    icon: <AlertTriangle className="w-6 h-6 text-orange-400" />,
+  };
+}
 
 export default function AnalyticsPage() {
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [loading, setLoading] = useState(true);
+  const router = useRouter();
+  const { isAuthenticated, isLoading: authLoading } = useAuth();
+
+  useEffect(() => {
+    if (!authLoading && !isAuthenticated) {
+      const token = localStorage.getItem("authToken");
+      if (!token) {
+        router.push("/login");
+        return;
+      }
+    }
+    if (!authLoading) {
+      fetchTasks();
+    }
+  }, [authLoading, isAuthenticated, router]);
+
+  const fetchTasks = async () => {
+    try {
+      setLoading(true);
+      const data = await taskApi.getTasks();
+      setTasks(data);
+    } catch (err) {
+      console.error("Failed to fetch tasks for analytics:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Calculate analytics
+  const totalTasks = tasks.length;
+  const completedTasks = tasks.filter((t) => t.is_completed).length;
+  const pendingTasks = totalTasks - completedTasks;
+  const completionRate = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
+
+  // Count by priority
+  const highPriorityCount = tasks.filter((t) => t.priority === "High").length;
+  const mediumPriorityCount = tasks.filter((t) => t.priority === "Medium").length;
+  const lowPriorityCount = tasks.filter((t) => t.priority === "Low").length;
+
+  // Completed by priority
+  const highCompleted = tasks.filter((t) => t.priority === "High" && t.is_completed).length;
+  const mediumCompleted = tasks.filter((t) => t.priority === "Medium" && t.is_completed).length;
+  const lowCompleted = tasks.filter((t) => t.priority === "Low" && t.is_completed).length;
+
+  const productivityInfo = getProductivityMessage(completionRate, totalTasks);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <div className="relative">
+          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-8">
       {/* Page Header */}
@@ -12,65 +130,243 @@ export default function AnalyticsPage() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5 }}
       >
-        <h1 className="text-4xl font-bold bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 bg-clip-text text-transparent">
+        <h1 className="text-3xl font-bold text-white flex items-center gap-3">
+          <BarChart3 className="w-8 h-8 text-indigo-400" />
           Analytics
         </h1>
-        <p className="text-gray-600 mt-2">Track your productivity and task insights.</p>
+        <p className="mt-2" style={{ color: "var(--foreground-muted)" }}>
+          Track your productivity and task insights.
+        </p>
       </motion.div>
 
-      {/* Coming Soon Card */}
+      {/* Productivity Message Card */}
       <motion.div
-        initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: 1, scale: 1 }}
-        transition={{ delay: 0.2, duration: 0.5 }}
-        className="bg-white/70 backdrop-blur-md rounded-2xl p-16 border border-indigo-100 shadow-xl text-center"
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.1, duration: 0.5 }}
+        className="glass-card p-6"
       >
+        <div className="flex items-center gap-4">
+          <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg">
+            {productivityInfo.icon}
+          </div>
+          <div>
+            <p className="text-lg font-semibold text-white">{productivityInfo.message}</p>
+            <p className="text-sm" style={{ color: "var(--foreground-muted)" }}>
+              {totalTasks > 0
+                ? `You've completed ${completedTasks} out of ${totalTasks} tasks`
+                : "Add your first task to get started"}
+            </p>
+          </div>
+        </div>
+      </motion.div>
+
+      {/* Main Stats Cards */}
+      <motion.div
+        className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6"
+        variants={containerVariants}
+        initial="hidden"
+        animate="show"
+      >
+        {/* Total Tasks */}
         <motion.div
-          initial={{ scale: 0 }}
-          animate={{ scale: 1 }}
-          transition={{ delay: 0.4, type: "spring", stiffness: 200, damping: 15 }}
-          className="w-24 h-24 mx-auto mb-6 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg shadow-indigo-500/50"
+          variants={itemVariants}
+          whileHover={{ scale: 1.02, y: -4 }}
+          className="glass-card-solid p-6 card-elevated transition-all duration-300 hover:shadow-blue-500/10 hover:shadow-xl"
         >
-          <BarChart3 className="w-12 h-12 text-white" />
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium" style={{ color: "var(--foreground-muted)" }}>
+                Total Tasks
+              </p>
+              <motion.p
+                key={totalTasks}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="text-4xl font-bold text-white mt-2"
+              >
+                {totalTasks}
+              </motion.p>
+            </div>
+            <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shadow-lg">
+              <ListTodo className="w-6 h-6 text-white" />
+            </div>
+          </div>
         </motion.div>
 
-        <motion.h2
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.5, duration: 0.5 }}
-          className="text-3xl font-bold text-gray-900 mb-4"
-        >
-          Coming Soon
-        </motion.h2>
-
-        <motion.p
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.6, duration: 0.5 }}
-          className="text-gray-600 text-lg mb-8 max-w-md mx-auto"
-        >
-          We're working on bringing you detailed analytics and insights about your task performance.
-        </motion.p>
-
-        {/* Feature Preview */}
+        {/* Completed Tasks */}
         <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.7, duration: 0.5 }}
-          className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-2xl mx-auto"
+          variants={itemVariants}
+          whileHover={{ scale: 1.02, y: -4 }}
+          className="glass-card-solid p-6 card-elevated transition-all duration-300 hover:shadow-emerald-500/10 hover:shadow-xl"
         >
-          <div className="bg-gradient-to-br from-indigo-50 to-purple-50 rounded-xl p-4 border border-indigo-200">
-            <TrendingUp className="w-8 h-8 text-indigo-600 mx-auto mb-2" />
-            <h3 className="font-semibold text-gray-900 mb-1">Productivity Trends</h3>
-            <p className="text-sm text-gray-600">Track your task completion over time</p>
-          </div>
-
-          <div className="bg-gradient-to-br from-purple-50 to-pink-50 rounded-xl p-4 border border-purple-200">
-            <Clock className="w-8 h-8 text-purple-600 mx-auto mb-2" />
-            <h3 className="font-semibold text-gray-900 mb-1">Time Insights</h3>
-            <p className="text-sm text-gray-600">Understand your task patterns</p>
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium" style={{ color: "var(--foreground-muted)" }}>
+                Completed
+              </p>
+              <motion.p
+                key={completedTasks}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="text-4xl font-bold text-white mt-2"
+              >
+                {completedTasks}
+              </motion.p>
+            </div>
+            <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center shadow-lg">
+              <CheckCircle2 className="w-6 h-6 text-white" />
+            </div>
           </div>
         </motion.div>
+
+        {/* Pending Tasks */}
+        <motion.div
+          variants={itemVariants}
+          whileHover={{ scale: 1.02, y: -4 }}
+          className="glass-card-solid p-6 card-elevated transition-all duration-300 hover:shadow-amber-500/10 hover:shadow-xl"
+        >
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium" style={{ color: "var(--foreground-muted)" }}>
+                Pending
+              </p>
+              <motion.p
+                key={pendingTasks}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="text-4xl font-bold text-white mt-2"
+              >
+                {pendingTasks}
+              </motion.p>
+            </div>
+            <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center shadow-lg">
+              <Clock className="w-6 h-6 text-white" />
+            </div>
+          </div>
+        </motion.div>
+
+        {/* Completion Rate */}
+        <motion.div
+          variants={itemVariants}
+          whileHover={{ scale: 1.02, y: -4 }}
+          className="glass-card-solid p-6 card-elevated transition-all duration-300 hover:shadow-purple-500/10 hover:shadow-xl"
+        >
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium" style={{ color: "var(--foreground-muted)" }}>
+                Completion Rate
+              </p>
+              <motion.p
+                key={completionRate}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="text-4xl font-bold text-white mt-2"
+              >
+                {completionRate}%
+              </motion.p>
+            </div>
+            <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-purple-500 to-pink-600 flex items-center justify-center shadow-lg">
+              <TrendingUp className="w-6 h-6 text-white" />
+            </div>
+          </div>
+        </motion.div>
+      </motion.div>
+
+      {/* Completion Progress Bar */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.3, duration: 0.5 }}
+        className="glass-card p-6"
+      >
+        <h2 className="text-lg font-semibold text-white mb-4">Overall Progress</h2>
+        <div className="relative">
+          {/* Progress Bar Background */}
+          <div className="w-full h-4 rounded-full bg-slate-700/50 overflow-hidden">
+            {/* Progress Bar Fill */}
+            <motion.div
+              initial={{ width: 0 }}
+              animate={{ width: `${completionRate}%` }}
+              transition={{ delay: 0.5, duration: 1, ease: "easeOut" }}
+              className="h-full rounded-full bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-500 shadow-lg shadow-emerald-500/30"
+            />
+          </div>
+          {/* Progress Labels */}
+          <div className="flex justify-between mt-2 text-sm" style={{ color: "var(--foreground-muted)" }}>
+            <span>0%</span>
+            <span className="text-emerald-400 font-medium">{completionRate}% Complete</span>
+            <span>100%</span>
+          </div>
+        </div>
+      </motion.div>
+
+      {/* Priority Breakdown */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.4, duration: 0.5 }}
+        className="glass-card p-6"
+      >
+        <h2 className="text-lg font-semibold text-white mb-6">Tasks by Priority</h2>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {/* High Priority */}
+          <div className="p-4 rounded-xl" style={{ background: "rgba(239, 68, 68, 0.1)", border: "1px solid rgba(239, 68, 68, 0.3)" }}>
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-red-400 font-semibold">High Priority</span>
+              <span className="text-2xl font-bold text-white">{highPriorityCount}</span>
+            </div>
+            <div className="w-full h-2 rounded-full bg-slate-700/50 overflow-hidden">
+              <motion.div
+                initial={{ width: 0 }}
+                animate={{ width: highPriorityCount > 0 ? `${(highCompleted / highPriorityCount) * 100}%` : "0%" }}
+                transition={{ delay: 0.6, duration: 0.8, ease: "easeOut" }}
+                className="h-full rounded-full bg-red-500"
+              />
+            </div>
+            <p className="mt-2 text-sm" style={{ color: "var(--foreground-muted)" }}>
+              {highCompleted} of {highPriorityCount} completed
+            </p>
+          </div>
+
+          {/* Medium Priority */}
+          <div className="p-4 rounded-xl" style={{ background: "rgba(245, 158, 11, 0.1)", border: "1px solid rgba(245, 158, 11, 0.3)" }}>
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-amber-400 font-semibold">Medium Priority</span>
+              <span className="text-2xl font-bold text-white">{mediumPriorityCount}</span>
+            </div>
+            <div className="w-full h-2 rounded-full bg-slate-700/50 overflow-hidden">
+              <motion.div
+                initial={{ width: 0 }}
+                animate={{ width: mediumPriorityCount > 0 ? `${(mediumCompleted / mediumPriorityCount) * 100}%` : "0%" }}
+                transition={{ delay: 0.7, duration: 0.8, ease: "easeOut" }}
+                className="h-full rounded-full bg-amber-500"
+              />
+            </div>
+            <p className="mt-2 text-sm" style={{ color: "var(--foreground-muted)" }}>
+              {mediumCompleted} of {mediumPriorityCount} completed
+            </p>
+          </div>
+
+          {/* Low Priority */}
+          <div className="p-4 rounded-xl" style={{ background: "rgba(34, 197, 94, 0.1)", border: "1px solid rgba(34, 197, 94, 0.3)" }}>
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-emerald-400 font-semibold">Low Priority</span>
+              <span className="text-2xl font-bold text-white">{lowPriorityCount}</span>
+            </div>
+            <div className="w-full h-2 rounded-full bg-slate-700/50 overflow-hidden">
+              <motion.div
+                initial={{ width: 0 }}
+                animate={{ width: lowPriorityCount > 0 ? `${(lowCompleted / lowPriorityCount) * 100}%` : "0%" }}
+                transition={{ delay: 0.8, duration: 0.8, ease: "easeOut" }}
+                className="h-full rounded-full bg-emerald-500"
+              />
+            </div>
+            <p className="mt-2 text-sm" style={{ color: "var(--foreground-muted)" }}>
+              {lowCompleted} of {lowPriorityCount} completed
+            </p>
+          </div>
+        </div>
       </motion.div>
     </div>
   );
